@@ -1,0 +1,63 @@
+services:
+  app1:
+    build: ./app1
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  app2:
+    build: ./app2
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  app3:
+    build: ./app3
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  # ── Nginx Load Balancer ──────────────────────────
+  loadbalancer:
+    build: ./
+    ports:
+      - "80:80"
+    depends_on:
+      - app1
+      - app2
+      - app3
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+  # ── Autoscaler (Monitor CPU & Pindah Traffic) ────
+  autoscaler:
+    build: ./autoscaler
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - app1
+      - app2
+      - app3
+      - loadbalancer
+    environment:
+      - CPU_THRESHOLD=70          # Pindah traffic jika CPU > 70%
+      - CHECK_INTERVAL=10         # Cek setiap 10 detik
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
