@@ -46,7 +46,7 @@ def get_nginx_container():
 
 def generate_nginx_conf(active_servers):
     """
-    Generate nginx.conf — hanya server yang aktif yang menerima traffic.
+    Generate nginx.conf LENGKAP — termasuk CDN cache, caching endpoints.
     Server yang tidak aktif ditandai 'backup'.
     """
     upstream_lines = ""
@@ -63,6 +63,14 @@ def generate_nginx_conf(active_servers):
 http {{
     resolver 127.0.0.11 valid=5s;
 
+    # ── CDN Simulation: Nginx Proxy Cache ──
+    proxy_cache_path /var/cache/nginx/cdn_cache
+                     levels=1:2
+                     keys_zone=cdn_cache:10m
+                     max_size=100m
+                     inactive=60s
+                     use_temp_path=off;
+
     upstream flask_apps {{
 {upstream_lines}    }}
 
@@ -70,6 +78,7 @@ http {{
         listen 80;
         server_name localhost;
 
+        # ── Default: Proxy ke backend ──
         location / {{
             proxy_pass http://flask_apps;
 
@@ -82,8 +91,66 @@ http {{
             proxy_read_timeout 10s;
         }}
 
+        # ── /data → Redis cache di app level ──
+        location /data {{
+            proxy_pass http://flask_apps;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_connect_timeout 2s;
+            proxy_read_timeout 30s;
+        }}
+
+        # ── /static-asset → CDN Edge Cache (Nginx proxy_cache) ──
+        location /static-asset {{
+            proxy_pass http://flask_apps;
+
+            proxy_cache cdn_cache;
+            proxy_cache_valid 200 60s;
+            proxy_cache_key "$request_uri";
+            proxy_cache_use_stale error timeout updating;
+
+            add_header X-Cache-Status $upstream_cache_status always;
+            add_header X-CDN-Edge "nginx-cdn-sim" always;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+            proxy_connect_timeout 2s;
+            proxy_read_timeout 10s;
+        }}
+
+        # ── Cache Stats ──
+        location /cache-stats {{
+            proxy_pass http://flask_apps;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_connect_timeout 2s;
+            proxy_read_timeout 10s;
+        }}
+
+        # ── Cache Flush ──
+        location /cache-flush {{
+            proxy_pass http://flask_apps;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_connect_timeout 2s;
+            proxy_read_timeout 10s;
+        }}
+
+        # ── LB Health ──
         location /lb-health {{
             return 200 '{{"status": "load balancer healthy"}}';
+            add_header Content-Type application/json;
+        }}
+
+        # ── CDN Status ──
+        location /cdn-status {{
+            return 200 '{{"cdn_engine": "nginx-proxy-cache", "cache_zone": "cdn_cache", "max_size": "100m", "ttl": "60s"}}';
             add_header Content-Type application/json;
         }}
     }}

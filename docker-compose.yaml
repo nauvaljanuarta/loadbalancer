@@ -1,6 +1,28 @@
 services:
+  # ── Redis Caching Layer ───────────────────────────────
+  redis:
+    build: ./redis
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   app1:
     build: ./app1
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_TTL=30
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - app-network
     deploy:
@@ -10,6 +32,13 @@ services:
 
   app2:
     build: ./app2
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_TTL=30
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - app-network
     deploy:
@@ -19,6 +48,13 @@ services:
 
   app3:
     build: ./app3
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_TTL=30
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - app-network
     deploy:
@@ -26,7 +62,7 @@ services:
       restart_policy:
         condition: on-failure
 
-  # ── Nginx Load Balancer ──────────────────────────
+  # ── Nginx Load Balancer + CDN Simulation ──────────────
   loadbalancer:
     build: ./
     ports:
