@@ -27,7 +27,6 @@ def get_redis():
 
 # ── Helper: Simulasi "heavy computation" ──────────────
 def heavy_computation(complexity=1):
-    """Simulasi proses berat (database query / API call)."""
     time.sleep(0.5 * complexity)  # Simulasi latency
     result = sum(i * i for i in range(50000 * complexity))
     return result
@@ -162,11 +161,7 @@ def cache_flush():
 # ── Endpoint: CDN Simulated Static Asset ──────────────
 @app.route("/static-asset")
 def static_asset():
-    """
-    Simulasi pengambilan static asset (gambar/JS/CSS).
-    Respons ini di-cache oleh Nginx proxy_cache (simulasi CDN edge).
-    Header X-Cache-Status menunjukkan HIT/MISS di level CDN.
-    """
+
     hostname = socket.gethostname()
     # Simulasi generate asset berat
     time.sleep(0.3)

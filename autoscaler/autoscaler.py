@@ -1,10 +1,11 @@
 import docker
 import time
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 # ── Konfigurasi ──────────────────────────────────────
 CPU_THRESHOLD = float(os.getenv("CPU_THRESHOLD", 70))
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 5))
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 2))
 
 # Urutan prioritas server
 SERVER_PRIORITY = ["app1", "app2", "app3"]
@@ -203,18 +204,25 @@ def monitor():
     while True:
         print(f"\n[{time.strftime('%H:%M:%S')}] Server aktif: {', '.join(sorted(active_servers))}")
 
-        # Cek CPU semua server
+        # Cek CPU semua server (PARALEL — lebih cepat!)
         cpu_data = {}
         any_overload = False
         all_low = True
 
-        for svc in SERVER_PRIORITY:
+        def fetch_cpu(svc):
             container = get_container_for_service(svc)
             if not container:
+                return (svc, None)
+            return (svc, get_cpu_usage(container))
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            results = list(executor.map(fetch_cpu, SERVER_PRIORITY))
+
+        for svc, cpu in results:
+            if cpu is None:
                 print(f"  {svc}: tidak ada container")
                 continue
 
-            cpu = get_cpu_usage(container)
             cpu_data[svc] = cpu
 
             role = "⬅️  AKTIF" if svc in active_servers else "   STANDBY"
